@@ -21,9 +21,9 @@ transformer_project/
 
 ## 文档
 
-- [训练指南](docs/training.md)
-- [使用和部署指南](docs/usage.md)
-- [实现说明](docs/how-to-achieve.md)
+- [训练指南](training.md)
+- [使用和部署指南](usage.md)
+- [实现说明](how-to-achieve.md)
 
 ## 快速开始
 
