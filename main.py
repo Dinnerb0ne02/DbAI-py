@@ -15,7 +15,8 @@ from models.transformer import Transformer
 from utils.utils import load_config, load_model, get_device
 
 class ProjectManager:
-    """项目管理类，负责协调不同模块的运行"""
+    
+    """项目管理类，负责协调模块"""
     
     def __init__(self):
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -296,6 +297,7 @@ def main():
     train_parser.add_argument('--num_epochs', type=int, help='训练轮数')
     train_parser.add_argument('--learning_rate', type=float, help='学习率')
     train_parser.add_argument('--model_path', type=str, help='预训练模型路径')
+    train_parser.add_argument('--config', type=str, help='训练配置文件路径')  # 添加 --config 参数
     
     # 推理命令
     inference_parser = subparsers.add_parser('inference', help='使用模型进行推理')
