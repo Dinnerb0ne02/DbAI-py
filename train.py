@@ -9,9 +9,13 @@ from tqdm import tqdm
 
 # 导入项目模块
 from models.transformer import Transformer
-from utils.data import load_data, prepare_datasets, TranslationDataset
+from utils.data_loader import load_data, prepare_datasets, TranslationDataset
 from utils.tokenizer import Tokenizer
-from utils.metrics import bleu_score
+
+# from utils.metrics import bleu_score
+def bleu_score(references, hypotheses):
+    return bleu_score(references, hypotheses)
+
 from utils.scheduler import WarmupScheduler
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, 

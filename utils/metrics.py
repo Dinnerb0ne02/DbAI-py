@@ -1,6 +1,8 @@
 import torch
 import numpy as np
-from torchtext.data.metrics import bleu_score
+
+def bleu_score(references, hypotheses):
+    return bleu_score(references, hypotheses)
 
 def calculate_bleu(preds, targets, tgt_vocab):
     # 将预测和目标从索引转换回文本

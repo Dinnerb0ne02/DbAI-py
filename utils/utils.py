@@ -3,7 +3,6 @@ import json
 import os
 import math
 import numpy as np
-import matplotlib.pyplot as plt
 
 def save_config(config, path):
     with open(path, 'w') as f:
@@ -39,6 +38,6 @@ def count_parameters(model):
 
 def initialize_weights(model):
     if hasattr(model, 'weight') and model.weight.dim() > 1:
-        nn.init.xavier_uniform_(model.weight.data)
+        torch.nn.init.xavier_uniform_(model.weight.data)
 def get_device():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
