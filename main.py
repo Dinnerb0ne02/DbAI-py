@@ -6,7 +6,13 @@ import sys
 import subprocess
 import json
 import argparse
+import torch
+import torch.nn.functional as F
+import math
+import pickle
 from typing import Dict, Any, Optional
+from models.transformer import Transformer
+from utils.utils import load_config, load_model, get_device
 
 class ProjectManager:
     """项目管理类，负责协调不同模块的运行"""
@@ -159,6 +165,124 @@ class ProjectManager:
         for key, value in config.items():
             print(f"  {key}: {value}")
 
+    def cli_dialogue(self, **kwargs):
+        """命令行对话功能"""
+        model_path = kwargs.get('model_path', 'output/best_model.pth')
+        config_path = kwargs.get('config_path', 'config/training_config.json')
+        model_config_path = kwargs.get('model_config_path', 'config/model_config.json')
+
+        # 加载配置
+        config = load_config(config_path)
+        model_config = load_config(model_config_path)
+
+        # 设置设备
+        device = get_device()
+        print(f"Using device: {device}")
+
+        # 加载词汇表
+        with open(os.path.join(config['data_path'], 'src_vocab.pkl'), 'rb') as f:
+            src_vocab = pickle.load(f)
+
+        with open(os.path.join(config['data_path'], 'tgt_vocab.pkl'), 'rb') as f:
+            tgt_vocab = pickle.load(f)
+
+        # 创建反向词汇表
+        idx_to_word = {idx: word for word, idx in tgt_vocab.items()}
+
+        # 初始化模型
+        model = Transformer(
+            src_vocab_size=len(src_vocab),
+            tgt_vocab_size=len(tgt_vocab),
+            d_model=model_config['d_model'],
+            num_heads=model_config['num_heads'],
+            num_encoder_layers=model_config['num_encoder_layers'],
+            num_decoder_layers=model_config['num_decoder_layers'],
+            d_ff=model_config['d_ff'],
+            max_seq_length=model_config['max_seq_length'],
+            dropout=model_config['dropout']
+        ).to(device)
+
+        # 加载模型权重
+        model, _, _, _ = load_model(model, None, model_path)
+        model.eval()
+
+        print("开始对话，请输入文本（输入 'quit' 退出）：")
+        while True:
+            text = input("> ")
+            if text.lower() == 'quit':
+                break
+
+            # 将文本转换为索引序列
+            src_indices = [src_vocab.get(token, src_vocab['<unk>']) for token in text.split()]
+            src_indices = [src_vocab['<sos>']] + src_indices + [src_vocab['<eos>']]
+
+            # 截断或填充序列
+            if len(src_indices) > model_config['max_seq_length']:
+                src_indices = src_indices[:model_config['max_seq_length']]
+            else:
+                src_indices = src_indices + [0] * (model_config['max_seq_length'] - len(src_indices))
+
+            # 转换为张量
+            src_tensor = torch.tensor([src_indices]).to(device)
+
+            # 预测
+            with torch.no_grad():
+                output = self.greedy_decode(model, src_tensor, model_config['max_seq_length'],
+                                            tgt_vocab['<sos>'], tgt_vocab['<eos>'], device)
+
+            # 将预测结果转换回文本
+            pred_indices = output[0].cpu().numpy()
+            pred_words = []
+            for idx in pred_indices:
+                if idx == tgt_vocab['<eos>']:
+                    break
+                pred_words.append(idx_to_word[idx])
+
+            pred_text = ' '.join(pred_words[1:])  # 跳过<sos>标记
+
+            print(f"回复: {pred_text}")
+
+    def greedy_decode(self, model, src, max_len, sos_idx, eos_idx, device):
+        # 只使用编码器编码源序列
+        src_mask = (src != 0).unsqueeze(1).unsqueeze(2).to(device)
+        enc_output = model.encoder_embedding(src) * math.sqrt(model.d_model)
+        enc_output = model.positional_encoding(enc_output)
+
+        for enc_layer in model.encoder_layers:
+            enc_output = enc_layer(enc_output, src_mask)
+
+        # 初始化输出序列
+        ys = torch.ones(src.size(0), 1).fill_(sos_idx).long().to(device)
+
+        # 逐个生成标记
+        for i in range(max_len - 1):
+            # 创建目标序列掩码
+            tgt_mask = (ys != 0).unsqueeze(1).unsqueeze(3).to(device)
+            nopeak_mask = (1 - torch.triu(
+                torch.ones(1, ys.size(1), ys.size(1)), diagonal=1)).bool().to(device)
+            tgt_mask = tgt_mask & nopeak_mask
+
+            # 解码
+            dec_output = model.decoder_embedding(ys) * math.sqrt(model.d_model)
+            dec_output = model.positional_encoding(dec_output)
+
+            for dec_layer in model.decoder_layers:
+                dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
+
+            # 预测下一个标记
+            output = model.fc_out(dec_output[:, -1])
+            prob = F.softmax(output, dim=1)
+            next_word = torch.argmax(prob, dim=1).unsqueeze(1)
+
+            # 添加到输出序列
+            ys = torch.cat([ys, next_word], dim=1)
+
+            # 如果所有序列都生成了结束标记，则停止
+            if (next_word == eos_idx).all():
+                break
+
+        return ys
+
 def main():
     """主函数，处理命令行参数并执行相应操作"""
     parser = argparse.ArgumentParser(description='Transformer 模型项目管理工具')
@@ -193,6 +317,12 @@ def main():
     # 脚本命令
     script_parser = subparsers.add_parser('script', help='运行自定义脚本')
     script_parser.add_argument('--name', type=str, required=True, help='脚本名称')
+
+    # 命令行对话命令
+    cli_parser = subparsers.add_parser('cli', help='命令行对话')
+    cli_parser.add_argument('--model_path', type=str, default='output/best_model.pth', help='模型路径')
+    cli_parser.add_argument('--config_path', type=str, default='config/training_config.json', help='训练配置文件路径')
+    cli_parser.add_argument('--model_config_path', type=str, default='config/model_config.json', help='模型配置文件路径')
     
     # 解析参数
     args = parser.parse_args()
@@ -248,6 +378,10 @@ def main():
         input()
         kwargs = {k: v for k, v in vars(args).items() if v is not None and k != 'command' and k != 'name'}
         manager.run_script(args.name, **kwargs)
+
+    elif args.command == 'cli':
+        kwargs = {k: v for k, v in vars(args).items() if v is not None and k != 'command'}
+        manager.cli_dialogue(**kwargs)
     
     else:
         parser.print_help()

@@ -34,10 +34,18 @@ python main.py config --type training --show
 python main.py config --type model
 ```
 
-### 运行自定义脚本
+### 运行命令行脚本(在命令行中对话)
 
 ```bash
-python main.py script --name my_custom_script.py
+python main.py cli --model_path output/model.pth
+```
+
+使用quit来退出
+
+若要传递其他参数(仅举例)
+
+```bash
+python main.py cli --model_path output/model.pth --config_path config/custom_config.json
 ```
 
 ### 查看帮助信息
